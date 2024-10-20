@@ -56,9 +56,12 @@ class Property(NamedTuple):
     import_module: Import
     alias: str = None
     description: str = ""
+    default: str = None
 
     @property
     def default_repr(self):
+        if self.default:
+            return f' = \'{self.default}\''
         if not self.alias:
             return ' = None' if not self.required else ''
         else:
@@ -109,6 +112,18 @@ class Model:
 
     def get_props(self, defi):
         required = set(defi.get('required', []))
+        x_gvk = defi.get("x-kubernetes-group-version-kind", None)
+        is_resource = False
+        if x_gvk is not None:
+            is_resource = True
+            gvk = x_gvk[0]
+            group = gvk['group']
+            version = gvk['version']
+            if group != '':
+                api_version = f'{group}/{version}'
+            else:
+                api_version = version
+            kind = gvk['kind']
         properties = []
         for p_name, p_defi in defi['properties'].items():
             req = p_name in required
@@ -117,13 +132,20 @@ class Model:
             desc = p_defi.get("description")
             if desc:
                 desc = RE_NEW_LINE.sub("\n", desc)
+            default = None
+            if is_resource:
+                if real_name == 'apiVersion':
+                    default = api_version
+                elif real_name == 'kind':
+                    default = kind
             properties.append(Property(
                 name=real_name,
                 type=p_type,
                 required=req,
                 import_module=get_module_from_property_def(p_defi),
                 alias=p_name if p_name != real_name else None,
-                description=desc
+                description=desc,
+                default=default,
             ))
 
         properties.sort(key=lambda x: x.required, reverse=True)
